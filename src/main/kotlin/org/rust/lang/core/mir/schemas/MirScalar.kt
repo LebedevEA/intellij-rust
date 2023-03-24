@@ -5,6 +5,6 @@
 
 package org.rust.lang.core.mir.schemas
 
-sealed class MirScalarValue {
-    data class Int(val scalarInt: MirScalarInt) : MirScalarValue()
+sealed class MirScalar {
+    data class Int(val scalarInt: MirScalarInt) : MirScalar()
 }

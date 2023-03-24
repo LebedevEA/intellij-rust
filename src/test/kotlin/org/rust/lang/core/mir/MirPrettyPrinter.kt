@@ -188,7 +188,7 @@ internal class MirPrettyPrinter(
     private fun value(constValue: MirConstValue): String {
         return when (constValue) {
             is MirConstValue.Scalar -> when (val value = constValue.value) {
-                is MirScalarValue.Int -> value.scalarInt.data.toString()
+                is MirScalar.Int -> value.scalarInt.data.toString()
             }
         }
     }

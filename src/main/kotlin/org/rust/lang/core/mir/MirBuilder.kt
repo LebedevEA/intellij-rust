@@ -516,7 +516,7 @@ class MirBuilder private constructor(
     private fun toConstant(value: Long, ty: Ty, source: MirSourceInfo): MirConstant {
         val int = MirScalarInt(value, 0) // TODO: 0 (do I even need this)
         return MirConstant.Value(
-            constValue = MirConstValue.Scalar(MirScalarValue.Int(int)),
+            constValue = MirConstValue.Scalar(MirScalar.Int(int)),
             ty = ty,
             source = source,
         )

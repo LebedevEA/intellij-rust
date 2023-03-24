@@ -5,7 +5,7 @@
 
 package org.rust.lang.core.consteval
 
-import org.rust.lang.core.mir.schemas.MirScalarValue
+import org.rust.lang.core.mir.schemas.MirScalar
 
 /**
  * In compiler, it usually refers as generic Provenance, but in const eval it's always `AllocId`
@@ -19,7 +19,7 @@ class Allocation private constructor(var kind: Kind) {
             override fun clone() = this
         }
 
-        class Scalar(val value: MirScalarValue) : Kind() {
+        class Scalar(val value: MirScalar) : Kind() {
             override fun clone(): Kind {
                 return Scalar(value)
             }
@@ -30,6 +30,6 @@ class Allocation private constructor(var kind: Kind) {
 
     companion object {
         fun uninit() = Allocation(Kind.Uninitialized)
-        fun scalar(value: MirScalarValue) = Allocation(Kind.Scalar(value))
+        fun scalar(value: MirScalar) = Allocation(Kind.Scalar(value))
     }
 }

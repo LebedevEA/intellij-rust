@@ -11,7 +11,7 @@ import org.rust.ProjectDescriptor
 import org.rust.RsTestBase
 import org.rust.WithStdlibRustProjectDescriptor
 import org.rust.lang.core.mir.schemas.MirScalarInt
-import org.rust.lang.core.mir.schemas.MirScalarValue
+import org.rust.lang.core.mir.schemas.MirScalar
 import org.rust.lang.core.psi.RsConstant
 import org.rust.lang.core.psi.RsFile
 
@@ -34,7 +34,7 @@ class ConstEvaluationTest : RsTestBase() {
     }
 
     private fun int(value: Long): Allocation {
-        return Allocation.scalar(MirScalarValue.Int(MirScalarInt(value, 0)))
+        return Allocation.scalar(MirScalar.Int(MirScalarInt(value, 0)))
     }
 
     // TODO: maybe use something already implemented

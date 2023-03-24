@@ -115,8 +115,11 @@ internal class MirPrettyPrinter(
         return when (rvalue) {
             is MirRvalue.BinaryOpUse -> {
                 val opName = when (val op = rvalue.op) {
-                    is ArithmeticOp -> op.traitName
-                    is EqualityOp.EQ -> "Eq"
+                    is MirBinaryOperator.Arithmetic -> op.op.traitName
+                    is MirBinaryOperator.Equality -> when (op.op) {
+                        EqualityOp.EQ -> "Eq"
+                        EqualityOp.EXCLEQ -> TODO()
+                    }
                     else -> TODO()
                 }
                 "$opName(${format(rvalue.left)}, ${format(rvalue.right)})"
@@ -125,7 +128,7 @@ internal class MirPrettyPrinter(
             is MirRvalue.Use -> format(rvalue.operand)
             is MirRvalue.CheckedBinaryOpUse -> {
                 val funName = when (val op = rvalue.op) {
-                    is ArithmeticOp -> "Checked${op.traitName}"
+                    is MirBinaryOperator.Arithmetic -> "Checked${op.op.traitName}"
                     else -> throw IllegalStateException("$op can't be checked")
                 }
                 "$funName(${format(rvalue.left)}, ${format(rvalue.right)})"

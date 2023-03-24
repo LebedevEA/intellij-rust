@@ -8,6 +8,7 @@ package org.rust.lang.core.mir
 import com.intellij.psi.PsiWhiteSpace
 import org.rust.lang.core.mir.building.*
 import org.rust.lang.core.mir.schemas.*
+import org.rust.lang.core.mir.schemas.MirBinaryOperator.Companion.toMir
 import org.rust.lang.core.mir.schemas.impls.MirBasicBlockImpl
 import org.rust.lang.core.mir.schemas.impls.MirBodyImpl
 import org.rust.lang.core.psi.*
@@ -244,7 +245,7 @@ class MirBuilder private constructor(
             val value = resultPlace.makeField(0, ty)
             val overflow = resultPlace.makeField(1, TyBool.INSTANCE)
             block
-                .pushAssign(resultPlace, MirRvalue.CheckedBinaryOpUse(op, left.toCopy(), right.toCopy()), source)
+                .pushAssign(resultPlace, MirRvalue.CheckedBinaryOpUse(op.toMir(), left.toCopy(), right.toCopy()), source)
                 .assert(
                     MirOperand.Move(overflow),
                     false,
@@ -254,7 +255,7 @@ class MirBuilder private constructor(
                 .and(MirRvalue.Use(MirOperand.Move(value)))
         } else {
             if (!(ty.isIntegral && (op == ArithmeticOp.DIV || op == ArithmeticOp.REM))) {
-                return block and MirRvalue.BinaryOpUse(op, left, right)
+                return block and MirRvalue.BinaryOpUse(op.toMir(), left, right)
             }
 
             val zeroAssert = if (op == ArithmeticOp.DIV) {
@@ -268,14 +269,14 @@ class MirBuilder private constructor(
             val zero = MirOperand.Constant(toConstant(0, ty, source))
             block.pushAssign(
                 place = isZero,
-                rvalue = MirRvalue.BinaryOpUse(EqualityOp.EQ, right.toCopy(), zero),
+                rvalue = MirRvalue.BinaryOpUse(EqualityOp.EQ.toMir(), right.toCopy(), zero),
                 source = source,
             )
             block
                 .assert(MirOperand.Move(isZero), false, source, zeroAssert)
                 .and(elem)
                 .assertDivOverflow(ty, overflowAssert, source)
-                .map { MirRvalue.BinaryOpUse(op, left, right) }
+                .map { MirRvalue.BinaryOpUse(op.toMir(), left, right) }
         }
     }
 
@@ -298,17 +299,17 @@ class MirBuilder private constructor(
         return block
             .pushAssign(
                 place = isNegOne,
-                rvalue = MirRvalue.BinaryOpUse(EqualityOp.EQ, right.toCopy(), negOne),
+                rvalue = MirRvalue.BinaryOpUse(EqualityOp.EQ.toMir(), right.toCopy(), negOne),
                 source = source,
             )
             .pushAssign(
                 place = isMin,
-                rvalue = MirRvalue.BinaryOpUse(EqualityOp.EQ, left.toCopy(), min),
+                rvalue = MirRvalue.BinaryOpUse(EqualityOp.EQ.toMir(), left.toCopy(), min),
                 source = source,
             )
             .pushAssign(
                 place = overflow,
-                rvalue = MirRvalue.BinaryOpUse(ArithmeticOp.BIT_AND, MirOperand.Move(isNegOne), MirOperand.Move(isMin)),
+                rvalue = MirRvalue.BinaryOpUse(ArithmeticOp.BIT_AND.toMir(), MirOperand.Move(isNegOne), MirOperand.Move(isMin)),
                 source = source,
             )
             .assert(
@@ -330,7 +331,7 @@ class MirBuilder private constructor(
         check(type is TyInteger) // TODO: guess it can also be boolean or reference
         val isMin = localDecls.tempPlace(TyBool.INSTANCE, source, Mutability.MUTABLE)
         val eq = MirRvalue.BinaryOpUse(
-            op = EqualityOp.EQ,
+            op = EqualityOp.EQ.toMir(),
             left = elem.toCopy(),
             right = MirOperand.Constant(toConstant(type.minValue, type, source))
         )

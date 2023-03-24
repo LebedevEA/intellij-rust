@@ -11,10 +11,23 @@ import org.rust.lang.core.psi.ext.ComparisonOp
 import org.rust.lang.core.psi.ext.EqualityOp
 
 sealed interface MirBinaryOperator {
-    data class Arithmetic(val op: ArithmeticOp) : MirBinaryOperator
-    data class Equality(val op: EqualityOp) : MirBinaryOperator
-    data class Comparison(val op: ComparisonOp) : MirBinaryOperator
-    object Offset : MirBinaryOperator
+    val underlyingOp: BinaryOperator?
+
+    data class Arithmetic(val op: ArithmeticOp) : MirBinaryOperator {
+        override val underlyingOp get() = op
+    }
+
+    data class Equality(val op: EqualityOp) : MirBinaryOperator {
+        override val underlyingOp get() = op
+    }
+
+    data class Comparison(val op: ComparisonOp) : MirBinaryOperator {
+        override val underlyingOp get() = op
+    }
+
+    object Offset : MirBinaryOperator {
+        override val underlyingOp get() = null
+    }
 
     companion object {
         fun BinaryOperator.toMir() = when (this) {

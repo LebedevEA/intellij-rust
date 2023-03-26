@@ -10,8 +10,13 @@ import org.rust.lang.core.psi.ext.ArithmeticOp
 import org.rust.lang.core.types.ty.Ty
 import org.rust.lang.core.types.ty.TyTuple
 
-val MirBinaryOperator.isHomogeneous: Boolean get() = when (this.underlyingOp) {
+val MirBinaryOperator.isRightHomogeneous: Boolean get() = when (this.underlyingOp) {
     null, ArithmeticOp.SHL, ArithmeticOp.SHR -> false // null means Offset
+    else -> true
+}
+
+val MirBinaryOperator.isLeftHomogeneous: Boolean get() = when (this) {
+    is MirBinaryOperator.Equality, is MirBinaryOperator.Comparison -> false
     else -> true
 }
 

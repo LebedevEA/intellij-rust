@@ -12,7 +12,10 @@ import org.rust.lang.core.mir.schemas.*
 import org.rust.lang.core.mir.schemas.MirPlace
 import org.rust.lang.core.psi.RsConstant
 import org.rust.lang.core.psi.ext.ArithmeticOp
+import org.rust.lang.core.psi.ext.ComparisonOp
+import org.rust.lang.core.psi.ext.EqualityOp
 import org.rust.lang.core.types.ty.Ty
+import org.rust.lang.core.types.ty.TyBool
 import org.rust.lang.core.types.ty.isIntegral
 
 
@@ -67,16 +70,32 @@ class Interpreter private constructor(
         val dest = evalPlace(place)
         when (rvalue) {
             is MirRvalue.Aggregate.Tuple -> TODO()
-            is MirRvalue.BinaryOpUse -> TODO()
+            is MirRvalue.BinaryOpUse -> {
+                val leftLayoutTy = if (rvalue.op.isLeftHomogeneous) dest.ty else null
+                val left = readImmediate(evalOperand(rvalue.left, leftLayoutTy))
+                val rightLayoutTy = if (rvalue.op.isRightHomogeneous) left.ty else null
+                val right = readImmediate(evalOperand(rvalue.right, rightLayoutTy))
+                binopIgnoreOverflow(rvalue.op, left, right, dest)
+            }
             is MirRvalue.CheckedBinaryOpUse -> {
                 val left = readImmediate(evalOperand(rvalue.left, null))
-                val layoutTy = if (rvalue.op.isHomogeneous) left.ty else null
+                val layoutTy = if (rvalue.op.isRightHomogeneous) left.ty else null
                 val right = readImmediate(evalOperand(rvalue.right, layoutTy))
                 binopWithOverflow(rvalue.op, left, right, dest)
             }
             is MirRvalue.UnaryOpUse -> TODO()
             is MirRvalue.Use -> copyOp(evalOperand(rvalue.operand, dest.ty), dest, false)
         }
+    }
+
+    private fun binopIgnoreOverflow(
+        operator: MirBinaryOperator,
+        left: ImmediateTy,
+        right: ImmediateTy,
+        dest: PlaceTy,
+    ) {
+        val (value, _, _) = overflowingBinaryOp(operator, left, right)
+        writeImmediate(Immediate.fromScalarValue(value), dest)
     }
 
     private fun binopWithOverflow(
@@ -98,6 +117,11 @@ class Interpreter private constructor(
     ): Triple<MirScalar, Boolean, Ty> {
         val tyKind = left.ty.kind
         return when {
+            tyKind === TyKind.Bool -> {
+                val leftScalar = left.immediate.asScalar()
+                val rightScalar = right.immediate.asScalar()
+                binaryBoolOp(op, leftScalar.toBool(), rightScalar.toBool())
+            }
             left.ty.isIntegral -> {
                 val leftBits = left.immediate.asScalar().toBits()
                 val rightBits = right.immediate.asScalar().toBits()
@@ -105,6 +129,26 @@ class Interpreter private constructor(
             }
             else -> TODO()
         }
+    }
+
+    private fun binaryBoolOp(
+        op: MirBinaryOperator,
+        left: Boolean,
+        right: Boolean,
+    ): Triple<MirScalar, Boolean, Ty> {
+        val result = when (op.underlyingOp) {
+            EqualityOp.EQ -> left == right
+            EqualityOp.EXCLEQ -> left != right
+            ComparisonOp.LT -> left < right
+            ComparisonOp.LTEQ -> left <= right
+            ComparisonOp.GT -> left > right
+            ComparisonOp.GTEQ -> left >= right
+            ArithmeticOp.BIT_AND -> left && right
+            ArithmeticOp.BIT_OR -> left || right
+            ArithmeticOp.BIT_XOR -> left xor right
+            else -> error("Unexpected operator for booleans")
+        }
+        return Triple(MirScalar.from(result), false, TyBool.INSTANCE)
     }
 
     private fun binaryIntOp(
@@ -115,16 +159,44 @@ class Interpreter private constructor(
         rightTy: Ty,
     ): Triple<MirScalar, Boolean, Ty> {
         if (operator.underlyingOp is ArithmeticOp.SHR || operator.underlyingOp is ArithmeticOp.SHL) {
-            TODO()
-        }
-        if (leftTy.isSigned) {
-            when (operator.underlyingOp) {
-                // TODO: overflow and truncating
-                is ArithmeticOp.ADD -> return Triple(MirScalar.from(left + right), false, leftTy)
-                else -> TODO()
+            return if (operator.underlyingOp is ArithmeticOp.SHR) {
+                Triple(MirScalar.from(left shr right.toInt()), false, leftTy)
+            } else {
+                Triple(MirScalar.from(left shl right.toInt()), false, leftTy)
             }
         }
-        TODO()
+        if (leftTy.isSigned) {
+            if (operator is MirBinaryOperator.Comparison) {
+                TODO()
+            }
+
+            // TODO: overflow and truncating
+            val op: ((Long, Long) -> Long)? = when (operator.underlyingOp) {
+                ArithmeticOp.DIV -> Long::div
+                ArithmeticOp.REM -> Long::rem
+                ArithmeticOp.ADD -> Long::plus
+                ArithmeticOp.SUB -> Long::minus
+                ArithmeticOp.MUL -> Long::times
+                else -> null
+            }
+            if (op != null) {
+                return Triple(MirScalar.from(op(left, right)), false, leftTy)
+            }
+        }
+        return when (operator.underlyingOp) {
+            EqualityOp.EQ -> Triple(MirScalar.from(left == right), false, TyBool.INSTANCE)
+            EqualityOp.EXCLEQ -> Triple(MirScalar.from(left == right), false, TyBool.INSTANCE)
+
+            ComparisonOp.LT -> Triple(MirScalar.from(left < right), false, TyBool.INSTANCE)
+            ComparisonOp.LTEQ -> Triple(MirScalar.from(left <= right), false, TyBool.INSTANCE)
+            ComparisonOp.GT -> Triple(MirScalar.from(left > right), false, TyBool.INSTANCE)
+            ComparisonOp.GTEQ -> Triple(MirScalar.from(left >= right), false, TyBool.INSTANCE)
+
+            ArithmeticOp.BIT_OR -> Triple(MirScalar.from(left or right), false, leftTy)
+            ArithmeticOp.BIT_AND -> Triple(MirScalar.from(left and right), false, leftTy)
+            ArithmeticOp.BIT_XOR -> Triple(MirScalar.from(left xor right), false, leftTy)
+            else -> TODO("All cases are expected to be handled before")
+        }
     }
 
     private fun readImmediate(operand: OperandTy): ImmediateTy {

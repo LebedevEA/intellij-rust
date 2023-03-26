@@ -22,9 +22,54 @@ class ConstEvaluationTest : RsTestBase() {
         expected = int(43),
     )
 
-    fun `test sum`() = doTest(
+    fun `test add`() = doTest(
         code = "const FOO: i32 = 30 + 13;",
         expected = int(43),
+    )
+
+    fun `test sub`() = doTest(
+        code = "const FOO: i32 = 43 - 1;",
+        expected = int(42),
+    )
+
+    fun `test mul`() = doTest(
+        code = "const FOO: i32 = 21 * 2;",
+        expected = int(42),
+    )
+
+    fun `test div`() = doTest(
+        code = "const FOO: i32 = 43 / 2;",
+        expected = int(21),
+    )
+
+    fun `test rem`() = doTest(
+        code = "const FOO: i32 = 43 % 13;",
+        expected = int(4),
+    )
+
+    fun `test bit and`() = doTest(
+        code = "const FOO: i32 = 5 & 3;",
+        expected = int(1),
+    )
+
+    fun `test bit or`() = doTest(
+        code = "const FOO: i32 = 5 | 2;",
+        expected = int(7),
+    )
+
+    fun `test bit xor`() = doTest(
+        code = "const FOO: i32 = 7 ^ 5;",
+        expected = int(2),
+    )
+
+    fun `test shl`() = doTest(
+        code = "const FOO: i32 = 3 << 3;",
+        expected = int(24),
+    )
+
+    fun `test shr`() = doTest(
+        code = "const FOO: i32 = 3 >> 1;",
+        expected = int(1),
     )
 
     private fun doTest(

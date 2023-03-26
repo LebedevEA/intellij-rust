@@ -23,7 +23,7 @@ class ConstEvaluationTest : RsTestBase() {
     )
 
     fun `test sum`() = doTest(
-        code = "const FOO:i32 = 30 + 13;",
+        code = "const FOO: i32 = 30 + 13;",
         expected = int(43),
     )
 

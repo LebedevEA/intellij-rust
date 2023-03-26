@@ -5,6 +5,7 @@
 
 package org.rust.lang.core.consteval
 
+import org.rust.lang.core.mir.schemas.MirBasicBlock
 import org.rust.lang.core.mir.schemas.MirBody
 import org.rust.lang.core.mir.schemas.MirLocal
 import org.rust.lang.core.mir.schemas.MirSourceInfo
@@ -35,8 +36,12 @@ class Frame(
         }
     }
 
-    fun startLocation() {
+    fun setStartLocation() {
         location = Either.Left(body.startLocation())
+    }
+
+    fun setLocation(block: MirBasicBlock) {
+        location = Either.Left(Location(block, block.statements.first()))
     }
 
     private fun MirBody.startLocation(): Location {

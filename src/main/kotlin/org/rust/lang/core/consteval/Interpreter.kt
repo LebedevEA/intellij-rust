@@ -7,10 +7,14 @@ package org.rust.lang.core.consteval
 
 import org.rust.lang.core.mir.MirBuilder
 import org.rust.lang.core.mir.asSource
+import org.rust.lang.core.mir.isSigned
 import org.rust.lang.core.mir.schemas.*
 import org.rust.lang.core.mir.schemas.MirPlace
 import org.rust.lang.core.psi.RsConstant
+import org.rust.lang.core.psi.ext.ArithmeticOp
 import org.rust.lang.core.types.ty.Ty
+import org.rust.lang.core.types.ty.isIntegral
+
 
 /**
  * Something similar to `InterpCx` from compiler
@@ -64,10 +68,69 @@ class Interpreter private constructor(
         when (rvalue) {
             is MirRvalue.Aggregate.Tuple -> TODO()
             is MirRvalue.BinaryOpUse -> TODO()
-            is MirRvalue.CheckedBinaryOpUse -> TODO()
+            is MirRvalue.CheckedBinaryOpUse -> {
+                val left = readImmediate(evalOperand(rvalue.left, null))
+                val layoutTy = if (rvalue.op.isHomogeneous) left.ty else null
+                val right = readImmediate(evalOperand(rvalue.right, layoutTy))
+                binopWithOverflow(rvalue.op, left, right, dest)
+            }
             is MirRvalue.UnaryOpUse -> TODO()
-            is MirRvalue.Use -> copyOp(evalOperand(rvalue.operand), dest, false)
+            is MirRvalue.Use -> copyOp(evalOperand(rvalue.operand, dest.ty), dest, false)
         }
+    }
+
+    private fun binopWithOverflow(
+        operator: MirBinaryOperator,
+        left: ImmediateTy,
+        right: ImmediateTy,
+        dest: PlaceTy,
+    ) {
+        val (value, overflowed, ty) = overflowingBinaryOp(operator, left, right)
+        val pair = Immediate.ImScalarPair(value, MirScalar.from(overflowed))
+        // randomize layout is unstable option so not handling it
+        writeImmediate(pair, dest)
+    }
+
+    private fun overflowingBinaryOp(
+        op: MirBinaryOperator,
+        left: ImmediateTy,
+        right: ImmediateTy,
+    ): Triple<MirScalar, Boolean, Ty> {
+        val tyKind = left.ty.kind
+        return when {
+            left.ty.isIntegral -> {
+                val leftBits = left.immediate.asScalar().toBits()
+                val rightBits = right.immediate.asScalar().toBits()
+                binaryIntOp(op, leftBits, left.ty, rightBits, right.ty)
+            }
+            else -> TODO()
+        }
+    }
+
+    private fun binaryIntOp(
+        operator: MirBinaryOperator,
+        left: Long,
+        leftTy: Ty,
+        right: Long,
+        rightTy: Ty,
+    ): Triple<MirScalar, Boolean, Ty> {
+        if (operator.underlyingOp is ArithmeticOp.SHR || operator.underlyingOp is ArithmeticOp.SHL) {
+            TODO()
+        }
+        if (leftTy.isSigned) {
+            when (operator.underlyingOp) {
+                // TODO: overflow and truncating
+                is ArithmeticOp.ADD -> return Triple(MirScalar.from(left + right), false, leftTy)
+                else -> TODO()
+            }
+        }
+        TODO()
+    }
+
+    private fun readImmediate(operand: OperandTy): ImmediateTy {
+        return readImmediateRaw(operand)
+            .let { it as Either.Right<ImmediateTy> }
+            .value
     }
 
     private fun copyOp(src: OperandTy, dest: PlaceTy, allowTransmutate: Boolean) {
@@ -79,7 +142,7 @@ class Interpreter private constructor(
                 // TODO: check that src's and dest's layouts are sized (I don't think I need this)
                 val scrValue = either.value
                 // TODO: there is handling if layout is not compatible, I think it should always be in my case
-                return writeImmediate(scrValue, dest)
+                return writeImmediate(scrValue.immediate, dest)
             }
         }
         TODO()
@@ -99,11 +162,11 @@ class Interpreter private constructor(
         TODO("Not yet implemented")
     }
 
-    private fun writeImmediate(src: ImmediateTy, dest: PlaceTy) {
+    private fun writeImmediate(src: Immediate, dest: PlaceTy) {
         val memPlace = when (dest.place) {
             is Place.Local -> when (val state = dest.place.access()) {
                 is Operand.OpImmediate -> {
-                    state.value = src.immediate
+                    state.value = src
                     return
                 }
             }
@@ -112,11 +175,11 @@ class Interpreter private constructor(
         writeImmediateToMemPlace(src, memPlace)
     }
 
-    private fun writeImmediateToMemPlace(value: ImmediateTy, dest: MemPlace) {
+    private fun writeImmediateToMemPlace(value: Immediate, dest: MemPlace) {
         // In compiler, it's a bit more complex, I don't think it's needed
         val allocation = dest.pointer?.provenance ?: return // ZST
-        when (value.immediate) {
-            is Immediate.ImScalar -> allocation.kind = Allocation.Kind.Scalar(value.immediate.scalar)
+        when (value) {
+            is Immediate.ImScalar -> allocation.kind = Allocation.Kind.Scalar(value.scalar)
             is Immediate.ImScalarPair -> TODO()
             Immediate.Uninit -> TODO()
         }
@@ -147,39 +210,98 @@ class Interpreter private constructor(
         TODO("Not yet implemented")
     }
 
-    private fun evalOperand(operand: MirOperand): OperandTy {
+    private fun evalOperand(operand: MirOperand, layoutTy: Ty?): OperandTy {
         return when (operand) {
             is MirOperand.Constant -> {
                 // TODO: there is something complicated called subst_from_current_frame_and_normalize_erasing_regions
-                evalMirConstant(operand.constant)
+                evalMirConstant(operand.constant, layoutTy)
             }
-            is MirOperand.Copy -> TODO()
-            is MirOperand.Move -> TODO()
+            is MirOperand.Copy -> evalPlaceToOp(operand.place, layoutTy)
+            is MirOperand.Move -> evalPlaceToOp(operand.place, layoutTy)
         }
     }
 
-    private fun evalMirConstant(constant: MirConstant): OperandTy {
+    private fun evalPlaceToOp(place: MirPlace, layoutTy: Ty?): OperandTy {
+        val usedLayoutTy = if (place.projections.isEmpty()) layoutTy else null
+        return place.projections.fold(localToOperand(place.local, usedLayoutTy)) { operand, proj ->
+            operandProjection(operand, proj)
+        }
+    }
+
+    private fun operandProjection(base: OperandTy, projectionElem: MirProjectionElem<Ty>): OperandTy {
+        return when (projectionElem) {
+            is MirProjectionElem.Field -> operandField(base, projectionElem.fieldIndex)
+        }
+    }
+
+    private fun operandField(base: OperandTy, fieldIndex: Int): OperandTy {
+        val actualBase = when (val either = base.asMemPlaceOrImm()) {
+            is Either.Left -> {
+                TODO()
+            }
+            is Either.Right -> either.value
+        }
+        val fieldTy = actualBase.ty.field(fieldIndex)
+        val fieldValue = when (actualBase.immediate) {
+            is Immediate.ImScalarPair -> when (fieldIndex) {
+                0 -> Immediate.fromScalarValue(actualBase.immediate.left)
+                1 -> Immediate.fromScalarValue(actualBase.immediate.right)
+                else -> error("Field of pair can only be 0 or 1 but it is $fieldIndex")
+            }
+            else -> TODO()
+        }
+        return OperandTy(
+            operand = Operand.OpImmediate(fieldValue),
+            ty = fieldTy,
+        )
+    }
+
+    private fun MemPlaceTy.field(fieldIndex: Int): MemPlaceTy {
+        TODO()
+    }
+
+    private fun localToOperand(local: MirLocal, layoutTy: Ty?): OperandTy {
+        val operand = machine.curFrame().locals[local]?.access() ?: error("Local has no state")
+        return OperandTy(operand, layoutTy ?: local.ty)
+    }
+
+    private fun evalMirConstant(constant: MirConstant, layoutTy: Ty?): OperandTy {
         return when (constant) {
-            is MirConstant.Value -> constValToOp(constant.constValue, constant.ty)
+            is MirConstant.Value -> constValToOp(constant.constValue, constant.ty, layoutTy)
         }
     }
 
-    private fun constValToOp(constValue: MirConstValue, ty: Ty): OperandTy {
+    private fun constValToOp(constValue: MirConstValue, ty: Ty, layoutTy: Ty?): OperandTy {
         // TODO: there is an adjustment for scalar, but it's not idempotent only in case of pointers
         val operand = when (constValue) {
             is MirConstValue.Scalar -> Operand.OpImmediate(Immediate.fromScalarValue(constValue.value))
         }
-        return OperandTy(operand, ty)
+        return OperandTy(operand, layoutTy ?: ty)
     }
 
     private fun terminator(terminator: MirTerminator<MirBasicBlock>) {
         when (terminator) {
-            is MirTerminator.Assert -> TODO()
+            is MirTerminator.Assert -> {
+                val conditionValue = readScalar(evalOperand(terminator.cond, null)).toBool()
+                if (conditionValue == terminator.expected) {
+                    machine.curFrame().setLocation(terminator.target)
+                } else {
+                    TODO()
+                }
+            }
             is MirTerminator.Goto -> TODO()
             is MirTerminator.Resume -> TODO()
             is MirTerminator.Return -> popStackFrame(false)
             is MirTerminator.SwitchInt -> TODO()
         }
+    }
+
+    private fun goto(block: MirBasicBlock) {
+
+    }
+
+    private fun readScalar(operand: OperandTy): MirScalar {
+        return readImmediate(operand).immediate.asScalar()
     }
 
     private fun pushStackFrame(body: MirBody, returnPlace: PlaceTy, returnTo: StackPopCleanup) {
@@ -202,7 +324,7 @@ class Interpreter private constructor(
         machine.checkRecursionLimit()
         machine.push(frame)
         // TODO: make sure all the constants required by this frame evaluate successfully (c) compiler
-        machine.curFrame().startLocation()
+        machine.curFrame().setStartLocation()
         // TODO: do I need tracing?
     }
 

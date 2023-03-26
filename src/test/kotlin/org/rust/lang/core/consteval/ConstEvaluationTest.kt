@@ -10,8 +10,8 @@ import org.intellij.lang.annotations.Language
 import org.rust.ProjectDescriptor
 import org.rust.RsTestBase
 import org.rust.WithStdlibRustProjectDescriptor
-import org.rust.lang.core.mir.schemas.MirScalarInt
 import org.rust.lang.core.mir.schemas.MirScalar
+import org.rust.lang.core.mir.schemas.MirScalarInt
 import org.rust.lang.core.psi.RsConstant
 import org.rust.lang.core.psi.RsFile
 
@@ -19,7 +19,12 @@ import org.rust.lang.core.psi.RsFile
 class ConstEvaluationTest : RsTestBase() {
     fun `test constant`() = doTest(
         code = "const FOO: i32 = 43;",
-        expected = int(43)
+        expected = int(43),
+    )
+
+    fun `test sum`() = doTest(
+        code = "const FOO:i32 = 30 + 13;",
+        expected = int(43),
     )
 
     private fun doTest(

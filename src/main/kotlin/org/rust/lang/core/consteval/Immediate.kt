@@ -8,7 +8,12 @@ package org.rust.lang.core.consteval
 import org.rust.lang.core.mir.schemas.MirScalar
 
 sealed class Immediate {
-    data class ImScalar(val scalar: MirScalar) : Immediate()
+    open fun asScalar(): MirScalar = error("Unexpected immediate type")
+
+    data class ImScalar(val scalar: MirScalar) : Immediate() {
+        override fun asScalar() = scalar
+    }
+
     data class ImScalarPair(val left: MirScalar, val right: MirScalar) : Immediate()
     object Uninit : Immediate()
 

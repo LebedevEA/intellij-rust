@@ -25,5 +25,6 @@ sealed class MirScalar {
 
     companion object {
         fun from(bool: Boolean) = Int(MirScalarInt(if (bool) 1 else 0, 0)) // TODO: size is not used anywhere
+        fun from(value: Long, size: Byte = 0) = Int(MirScalarInt(value, size))
     }
 }

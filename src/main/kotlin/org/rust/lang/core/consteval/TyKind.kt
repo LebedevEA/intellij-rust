@@ -18,6 +18,6 @@ sealed interface TyKind {
 
 val Ty.kind: TyKind get() = when (this) {
     is TyInteger.I32 -> TyKind.IntTy.I32
-    TyBool.INSTANCE -> TyKind.Bool
+    is TyBool -> TyKind.Bool
     else -> TODO("Unimplemented for $this")
 }
